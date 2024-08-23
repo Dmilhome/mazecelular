@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PEDRO</title>
+    <title>bicho</title>
     <style>
         body {
             margin: 0;
@@ -18,33 +18,46 @@
         #gameCanvas {
             display: block;
         }
-        #joystick {
+        .controls {
             position: fixed;
             bottom: 20px;
+            width: 300px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             left: 50%;
             transform: translateX(-50%);
-            width: 100px;
-            height: 100px;
-            background-color: rgba(255, 255, 255, 0.1);
-            border-radius: 50%;
-            touch-action: none;
         }
-        #joystick #stick {
-            position: absolute;
-            top: 50%;
-            left: 50%;
+        .controls .column {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .controls button {
             width: 60px;
             height: 60px;
             background-color: rgba(255, 255, 255, 0.2);
-            border-radius: 50%;
-            transform: translate(-50%, -50%);
+            border: none;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 20px;
+            touch-action: none;
+            margin: 5px;
+        }
+        .controls button:active {
+            background-color: rgba(255, 255, 255, 0.5);
         }
     </style>
 </head>
 <body>
     <canvas id="gameCanvas"></canvas>
-    <div id="joystick">
-        <div id="stick"></div>
+    <div class="controls">
+        <button id="left">←</button>
+        <div class="column">
+            <button id="up">↑</button>
+            <button id="down">↓</button>
+        </div>
+        <button id="right">→</button>
     </div>
 
     <script>
@@ -77,8 +90,7 @@
             x: TILE_SIZE * 1.5,
             y: TILE_SIZE * 1.5,
             angle: 0,
-            speed: 3,
-            velocity: { x: 0, y: 0 }
+            speed: 3
         };
 
         const monster = {
@@ -130,12 +142,28 @@
         }
 
         function movePlayer() {
-            let newX = player.x + player.velocity.x;
-            let newY = player.y + player.velocity.y;
+            let newX = player.x;
+            let newY = player.y;
+
+            if (keys.up) {
+                newX += Math.cos(player.angle) * player.speed;
+                newY += Math.sin(player.angle) * player.speed;
+            }
+            if (keys.down) {
+                newX -= Math.cos(player.angle) * player.speed;
+                newY -= Math.sin(player.angle) * player.speed;
+            }
 
             if (!isWall(newX, newY)) {
                 player.x = newX;
                 player.y = newY;
+            }
+
+            if (keys.left) {
+                player.angle -= 0.05;
+            }
+            if (keys.right) {
+                player.angle += 0.05;
             }
         }
 
@@ -270,44 +298,26 @@
             return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
         }
 
-        const joystick = document.getElementById('joystick');
-        const stick = document.getElementById('stick');
-        let isTouching = false;
+        const keys = {
+            up: false,
+            down: false,
+            left: false,
+            right: false
+        };
 
-        joystick.addEventListener('touchstart', (e) => {
-            isTouching = true;
-        });
+        function handleButtonPress(direction, isPressed) {
+            keys[direction] = isPressed;
+        }
 
-        joystick.addEventListener('touchend', () => {
-            isTouching = false;
-            player.velocity.x = 0;
-            player.velocity.y = 0;
-            stick.style.transform = `translate(-50%, -50%)`;
-        });
+        document.getElementById('up').addEventListener('pointerdown', () => handleButtonPress('up', true));
+        document.getElementById('down').addEventListener('pointerdown', () => handleButtonPress('down', true));
+        document.getElementById('left').addEventListener('pointerdown', () => handleButtonPress('left', true));
+        document.getElementById('right').addEventListener('pointerdown', () => handleButtonPress('right', true));
 
-        joystick.addEventListener('touchmove', (e) => {
-            if (isTouching) {
-                const touch = e.touches[0];
-                const rect = joystick.getBoundingClientRect();
-                const x = touch.clientX - rect.left - rect.width / 2;
-                const y = touch.clientY - rect.top - rect.height / 2;
-                const distance = Math.sqrt(x * x + y * y);
-                const angle = Math.atan2(y, x);
-
-                const maxDistance = rect.width / 2;
-
-                if (distance < maxDistance) {
-                    stick.style.transform = `translate(${x}px, ${y}px)`;
-                } else {
-                    const clampedX = Math.cos(angle) * maxDistance;
-                    const clampedY = Math.sin(angle) * maxDistance;
-                    stick.style.transform = `translate(${clampedX}px, ${clampedY}px)`;
-                }
-
-                player.velocity.x = Math.cos(angle) * player.speed * (distance / maxDistance);
-                player.velocity.y = Math.sin(angle) * player.speed * (distance / maxDistance);
-            }
-        });
+        document.getElementById('up').addEventListener('pointerup', () => handleButtonPress('up', false));
+        document.getElementById('down').addEventListener('pointerup', () => handleButtonPress('down', false));
+        document.getElementById('left').addEventListener('pointerup', () => handleButtonPress('left', false));
+        document.getElementById('right').addEventListener('pointerup', () => handleButtonPress('right', false));
 
         function gameLoop() {
             movePlayer();
