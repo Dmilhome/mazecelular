@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PEDRO</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        #gameCanvas {
+            display: block;
+        }
+        #joystick {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100px;
+            height: 100px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            touch-action: none;
+        }
+        #joystick #stick {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 60px;
+            height: 60px;
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="joystick">
+        <div id="stick"></div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const map = [
+            [1, 1, 1, 1, 1, 1, 1, 1],
+            [1, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 1, 0, 1, 0, 1, 1],
+            [1, 0, 1, 0, 1, 0, 0, 1],
+            [1, 0, 1, 0, 1, 1, 0, 1],
+            [1, 0, 0, 0, 0, 0, 0, 1],
+            [1, 1, 1, 1, 1, 1, 1, 1],
+        ];
+
+        const TILE_SIZE = 64;
+        const MAP_WIDTH = map[0].length;
+        const MAP_HEIGHT = map.length;
+
+        const FOV = Math.PI / 4;
+        const HALF_FOV = FOV / 2;
+        const NUM_RAYS = 300;
+        const MAX_DEPTH = 1000;
+
+        const player = {
+            x: TILE_SIZE * 1.5,
+            y: TILE_SIZE * 1.5,
+            angle: 0,
+            speed: 3,
+            velocity: { x: 0, y: 0 }
+        };
+
+        const monster = {
+            x: TILE_SIZE * 5.5,
+            y: TILE_SIZE * 5.5,
+            speed: 2,
+            img: new Image(),
+            path: []
+        };
+        monster.img.src = 'monster.png';
+
+        function castRays() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            for (let i = 0; i < NUM_RAYS; i++) {
+                const rayAngle = (player.angle - HALF_FOV) + (i / NUM_RAYS) * FOV;
+                const distance = castSingleRay(rayAngle);
+
+                const lineHeight = (TILE_SIZE * 800) / (distance * Math.cos(rayAngle - player.angle));
+
+                ctx.fillStyle = `rgb(${255 - distance}, ${255 - distance}, ${255 - distance})`;
+                ctx.fillRect(i * (canvas.width / NUM_RAYS), (canvas.height / 2) - lineHeight / 2, (canvas.width / NUM_RAYS), lineHeight);
+            }
+
+            drawMonster();
+        }
+
+        function castSingleRay(rayAngle) {
+            let x = player.x;
+            let y = player.y;
+
+            const xStep = Math.cos(rayAngle);
+            const yStep = Math.sin(rayAngle);
+
+            for (let i = 0; i < MAX_DEPTH; i++) {
+                x += xStep;
+                y += yStep;
+
+                const mapX = Math.floor(x / TILE_SIZE);
+                const mapY = Math.floor(y / TILE_SIZE);
+
+                if (map[mapY][mapX] === 1) {
+                    const distance = Math.sqrt((x - player.x) ** 2 + (y - player.y) ** 2);
+                    return distance;
+                }
+            }
+
+            return MAX_DEPTH;
+        }
+
+        function movePlayer() {
+            let newX = player.x + player.velocity.x;
+            let newY = player.y + player.velocity.y;
+
+            if (!isWall(newX, newY)) {
+                player.x = newX;
+                player.y = newY;
+            }
+        }
+
+        function moveMonster() {
+            if (monster.path.length === 0) {
+                monster.path = findPath(monster.x, monster.y, player.x, player.y);
+            }
+
+            if (monster.path.length > 0) {
+                let target = monster.path[0];
+                let dx = target.x - monster.x;
+                let dy = target.y - monster.y;
+
+                let distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < monster.speed) {
+                    monster.x = target.x;
+                    monster.y = target.y;
+                    monster.path.shift(); // Remove the current target from the path
+                } else {
+                    monster.x += (dx / distance) * monster.speed;
+                    monster.y += (dy / distance) * monster.speed;
+                }
+            }
+        }
+
+        function isWall(x, y) {
+            const mapX = Math.floor(x / TILE_SIZE);
+            const mapY = Math.floor(y / TILE_SIZE);
+            return map[mapY][mapX] === 1;
+        }
+
+        function drawMonster() {
+            let dx = monster.x - player.x;
+            let dy = monster.y - player.y;
+            let distance = Math.sqrt(dx * dx + dy * dy);
+
+            let angleToMonster = Math.atan2(dy, dx) - player.angle;
+
+            if (angleToMonster < -Math.PI) angleToMonster += 2 * Math.PI;
+            if (angleToMonster > Math.PI) angleToMonster -= 2 * Math.PI;
+
+            if (distance > 0.5 && Math.abs(angleToMonster) < HALF_FOV) {
+                const monsterHeight = (TILE_SIZE * 800) / (distance * Math.cos(angleToMonster));
+                const monsterWidth = monsterHeight;
+
+                const x = (canvas.width / 2) + Math.tan(angleToMonster) * canvas.width;
+
+                ctx.drawImage(monster.img, x - monsterWidth / 2, (canvas.height / 2) - monsterHeight / 2, monsterWidth, monsterHeight);
+            }
+        }
+
+        function findPath(startX, startY, endX, endY) {
+            let openList = [];
+            let closedList = [];
+            let startNode = createNode(startX, startY, null);
+            let endNode = createNode(endX, endY, null);
+            openList.push(startNode);
+
+            while (openList.length > 0) {
+                let lowestCostIndex = 0;
+
+                for (let i = 1; i < openList.length; i++) {
+                    if (openList[i].f < openList[lowestCostIndex].f) {
+                        lowestCostIndex = i;
+                    }
+                }
+
+                let currentNode = openList[lowestCostIndex];
+
+                if (currentNode.x === endNode.x && currentNode.y === endNode.y) {
+                    let path = [];
+                    let curr = currentNode;
+                    while (curr.parent) {
+                        path.push({ x: curr.x, y: curr.y });
+                        curr = curr.parent;
+                    }
+                    return path.reverse();
+                }
+
+                openList.splice(lowestCostIndex, 1);
+                closedList.push(currentNode);
+
+                let neighbors = getNeighbors(currentNode);
+
+                for (let i = 0; i < neighbors.length; i++) {
+                    let neighbor = neighbors[i];
+
+                    if (isWall(neighbor.x, neighbor.y)) {
+                        continue;
+                    }
+
+                    if (closedList.find(n => n.x === neighbor.x && n.y === neighbor.y)) {
+                        continue;
+                    }
+
+                    neighbor.g = currentNode.g + 1;
+                    neighbor.h = heuristic(neighbor, endNode);
+                    neighbor.f = neighbor.g + neighbor.h;
+                    neighbor.parent = currentNode;
+
+                    if (!openList.find(n => n.x === neighbor.x && n.y === neighbor.y)) {
+                        openList.push(neighbor);
+                    }
+                }
+            }
+
+            return [];
+        }
+
+        function createNode(x, y, parent) {
+            return {
+                x: Math.floor(x / TILE_SIZE) * TILE_SIZE + TILE_SIZE / 2,
+                y: Math.floor(y / TILE_SIZE) * TILE_SIZE + TILE_SIZE / 2,
+                g: 0,
+                h: 0,
+                f: 0,
+                parent: parent
+            };
+        }
+
+        function getNeighbors(node) {
+            return [
+                createNode(node.x + TILE_SIZE, node.y, node),
+                createNode(node.x - TILE_SIZE, node.y, node),
+                createNode(node.x, node.y + TILE_SIZE, node),
+                createNode(node.x, node.y - TILE_SIZE, node)
+            ];
+        }
+
+        function heuristic(a, b) {
+            return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+        }
+
+        const joystick = document.getElementById('joystick');
+        const stick = document.getElementById('stick');
+        let isTouching = false;
+
+        joystick.addEventListener('touchstart', (e) => {
+            isTouching = true;
+        });
+
+        joystick.addEventListener('touchend', () => {
+            isTouching = false;
+            player.velocity.x = 0;
+            player.velocity.y = 0;
+            stick.style.transform = `translate(-50%, -50%)`;
+        });
+
+        joystick.addEventListener('touchmove', (e) => {
+            if (isTouching) {
+                const touch = e.touches[0];
+                const rect = joystick.getBoundingClientRect();
+                const x = touch.clientX - rect.left - rect.width / 2;
+                const y = touch.clientY - rect.top - rect.height / 2;
+                const distance = Math.sqrt(x * x + y * y);
+                const angle = Math.atan2(y, x);
+
+                const maxDistance = rect.width / 2;
+
+                if (distance < maxDistance) {
+                    stick.style.transform = `translate(${x}px, ${y}px)`;
+                } else {
+                    const clampedX = Math.cos(angle) * maxDistance;
+                    const clampedY = Math.sin(angle) * maxDistance;
+                    stick.style.transform = `translate(${clampedX}px, ${clampedY}px)`;
+                }
+
+                player.velocity.x = Math.cos(angle) * player.speed * (distance / maxDistance);
+                player.velocity.y = Math.sin(angle) * player.speed * (distance / maxDistance);
+            }
+        });
+
+        function gameLoop() {
+            movePlayer();
+            moveMonster();
+            castRays();
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>
